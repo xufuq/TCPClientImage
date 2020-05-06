@@ -1,0 +1,178 @@
+#include "mainwindow.h"
+#include "ui_mainwindow.h"
+
+
+MainWindow::MainWindow(QWidget *parent) :
+    QMainWindow(parent),
+    ui(new Ui::MainWindow)
+{
+    ui->setupUi(this);
+
+    imagewidth=640;
+    imageheight=480;
+    imagecount=0;
+    Client=new QTcpSocket();
+//    image_receive=QImage(640, 480, QImage::Format_RGB888);
+//    image_receive=new QImage
+    PortLabel=new QLabel();
+    PortLabel->setText("Port:");
+    IpLabel=new QLabel();
+    IpLabel->setText("IP");
+    IpText = new QTextEdit(this);
+    IpText->setFixedSize(150,20);
+    IpText->setText("192.168.0.102");
+    ReceiveLabel=new QLabel("接受帧数");
+    ReceiveCount=new QTextEdit();
+    ReceiveCount->setFixedSize(75,20);
+    ReceiveCount->setText("0");
+    TextOutLabel=new QLabel("输出内容");
+    TextOutWord =new QTextEdit();
+    TextOutWord->setText("0");
+    TextOutWord->setFixedSize(75,20);
+    PortText=new QSpinBox();
+    PortText->setRange(0, 10000);
+    PortText->setValue(8082);
+    IfConnect=new QPushButton();
+    IfConnect->setText("点击连接");
+
+    AllScreen=new QVBoxLayout();
+    //一个画布
+    DrawPainter=new DrawImage;
+    AllScreen->addWidget(DrawPainter);
+    BottomSrc=new QHBoxLayout();
+    BottomSrc->addWidget(IpLabel);
+    BottomSrc->addWidget(IpText);
+    BottomSrc->addWidget(PortLabel);
+    BottomSrc->addWidget(PortText);
+    BottomSrc->addWidget(ReceiveLabel);
+    BottomSrc->addWidget(ReceiveCount);
+    BottomSrc->addWidget(TextOutLabel);
+    BottomSrc->addWidget(TextOutWord);
+    BottomSrc->addWidget(IfConnect);
+    AllScreen->addLayout(BottomSrc);
+    QWidget *mainwidget=new QWidget(this);
+    mainwidget->setLayout(AllScreen);
+    this->setCentralWidget(mainwidget);
+    this->setFixedSize(660,520);
+    QString LocalIP = getLocalIP();
+    this->setWindowTitle("W:前进  S:后退   A:左转   D:右转    本机IP地址:  "+LocalIP+" 连接后IP及Port不可更改");
+    connect(IfConnect,SIGNAL(clicked(bool)),this, SLOT(On_Dis_Connected()));
+    connect(Client,SIGNAL(stateChanged(QAbstractSocket::SocketState)),
+            this, SLOT(onSocketStateChange(QAbstractSocket::SocketState)));
+    connect(Client, SIGNAL(readyRead()),this,SLOT(onSocketReadyRead()));
+
+}
+
+MainWindow::~MainWindow()
+{
+    delete ui;
+}
+
+
+QString MainWindow::getLocalIP()
+{
+    QString hostName=QHostInfo::localHostName();//本地主机名
+    QHostInfo   hostInfo=QHostInfo::fromName(hostName);
+    QString   localIP="";
+
+    QList<QHostAddress> addList=hostInfo.addresses();//
+
+    if (!addList.isEmpty())
+        for (int i=0;i<addList.count();i++)
+        {
+            QHostAddress aHost=addList.at(i);
+            if (QAbstractSocket::IPv4Protocol==aHost.protocol())
+            {
+                localIP=aHost.toString();
+                break;
+            }
+        }
+        return localIP;
+}
+
+//启动client连接,信号槽函数
+void MainWindow::On_Dis_Connected()
+{
+    if(Client->state()==QAbstractSocket::UnconnectedState)
+    {
+        Client->connectToHost(IpText->toPlainText(), PortText->value());
+        this->grabKeyboard();
+    }
+
+    else if(Client->state()==QAbstractSocket::ConnectedState)
+        Client->disconnectFromHost();
+
+}
+//通过按钮指示当前连接状态,是一个信号槽函数
+void MainWindow::onSocketStateChange(QAbstractSocket::SocketState socketState)
+{
+    switch(socketState)
+    {
+    case QAbstractSocket::UnconnectedState:
+        IfConnect->setText("点击连接");
+        break;
+    case QAbstractSocket::ConnectingState:
+        IfConnect->setText("正在连接");
+        break;
+    case QAbstractSocket::ConnectedState:
+        IfConnect->setText("点击断开");
+        break;
+    default:
+        break;
+    }
+}
+//发送数据
+void MainWindow::keyPressEvent(QKeyEvent *event)
+{
+    QString word="0";
+    if(event->key() == Qt::Key_W)
+        word='W';
+    else if(event->key() == Qt::Key_S)
+        word='S';
+    else if(event->key() == Qt::Key_A)
+        word='A';
+    else if(event->key() == Qt::Key_D)
+        word='D';
+    else
+        word='0';
+    QByteArray str=word.toUtf8();
+    qDebug()<<word<<endl;
+    TextOutWord->setText(TextOutWord->toPlainText()+word);
+    Client->write(str,1);
+    Client->waitForBytesWritten();
+}
+
+void MainWindow::keyReleaseEvent(QKeyEvent *event)
+{
+    QString word="0";
+    QByteArray str=word.toUtf8();
+    qDebug()<<word<<endl;
+    Client->write(str,1);
+    Client->waitForBytesWritten();
+
+}
+
+void MainWindow::onSocketReadyRead()
+{
+    QByteArray bytes=NULL;
+    while(Client->waitForReadyRead(100))
+    {
+        bytes.append((QByteArray)Client->readAll());
+    }
+    imagecount++;
+    ReceiveCount->setText(QString::number(imagecount,10));
+    memcpy(imagebuffer, bytes, IMAGESIZE);
+    image_receive=new QImage(imagebuffer, imagewidth,imageheight,QImage::Format_RGB888);
+    DrawPainter->PassImage(*image_receive);
+    DrawPainter->update();
+}
+
+
+
+void MainWindow::closeEvent(QCloseEvent *event)
+{
+    if (Client->state()==QAbstractSocket::ConnectedState)
+        Client->disconnectFromHost();
+    event->accept();
+}
+

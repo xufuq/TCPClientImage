@@ -1,0 +1,7 @@
+<RCC>
+    <qresource prefix="/img">
+        <file>JLUlogo.jpg</file>
+        <file>frog.png</file>
+        <file>me.jpg</file>
+    </qresource>
+</RCC>
